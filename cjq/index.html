@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Document</title>
+  <style>
+
+  </style>
+</head>
+
+<body>
+  <canvas id="example" width="400" height="400"></canvas>
+</body>
+<script src="../utils/webgl-utils.js"></script>
+<script src="../utils/webgl-debug.js"></script>
+<script src="../utils//cuon-utils.js"></script>
+<script src="../utils/cuon-matrix.js"></script>
+
+<script>
+  var VSHADER_SOURCE = `
+        attribute vec4 a_Position;
+        attribute vec2 a_TexCoord;
+        varying vec2 v_TexCoord;
+        void main (){
+            gl_Position = a_Position;
+            v_TexCoord = a_TexCoord;
+        }
+    `;
+
+  var FSHADER_SOURCE = `
+        precision mediump float;
+        uniform sampler2D u_sampler;
+        varying vec2 v_TexCoord;
+        void main(){
+            gl_FragColor = texture2D(u_sampler, v_TexCoord);
+        }
+    `;
+
+  var g_points = [];
+  var g_colors = [];
+  var canvas = document.getElementById('example');
+  var gl = canvas.getContext('webgl');
+
+  if (!initShaders(gl, VSHADER_SOURCE, FSHADER_SOURCE)) {
+    console.log('initShaders error');
+  }
+
+
+
+  let source = [];
+
+  for (var i = 1; i < 9; i++) {
+    source.push(`../images/cjq/2/zhishengliuyanren00${i}.png`)
+  }
+
+  let promiseDonwload = []
+
+
+  source.forEach(path => {
+    let p = new Promise(res => {
+      let img = new Image();
+      img.src = path;
+
+      img.onload = (_image => {
+        res(img)
+      })
+    })
+
+    promiseDonwload.push(p)
+  })
+
+  let verticesTexCoords = new Float32Array([
+    -0.5, 0.5, 0.0, 1.0,
+    -0.5, -0.5, 0.0, 0.0,
+    0.5, 0.5, 1.0, 1.0,
+    0.5, -0.5, 1.0, 0.0
+  ])
+
+  let FSIZE = verticesTexCoords.BYTES_PER_ELEMENT;
+
+  let vertexTexCoordBuffer = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, vertexTexCoordBuffer);
+  gl.bufferData(gl.ARRAY_BUFFER, verticesTexCoords, gl.STATIC_DRAW);
+
+  let a_Position = gl.getAttribLocation(gl.program, 'a_Position');
+  gl.vertexAttribPointer(a_Position, 2, gl.FLOAT, false, FSIZE * 4, 0);
+  gl.enableVertexAttribArray(a_Position);
+
+  let a_TexCoord = gl.getAttribLocation(gl.program, 'a_TexCoord');
+  gl.vertexAttribPointer(a_TexCoord, 2, gl.FLOAT, false, FSIZE * 4, FSIZE * 2);
+  gl.enableVertexAttribArray(a_TexCoord);
+
+
+  let texture = gl.createTexture();
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 1);
+
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_2D, texture);
+  // 配置纹理参数
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+
+  let u_sampler = gl.getUniformLocation(gl.program, 'u_sampler')
+
+  let index = 0;
+
+
+
+  let startTime = performance.now();
+
+
+  Promise.all(promiseDonwload).then(images => {
+    console.log('images', images)
+
+    function loopdraw(timestamp) {
+      if (performance.now() - startTime > 150) {
+        startTime = performance.now();
+        draw(images)
+        requestAnimationFrame(loopdraw)
+
+      } else {
+        requestAnimationFrame(loopdraw)
+      }
+    }
+
+    loopdraw()
+
+  })
+
+
+
+  function draw(images) {
+    console.log('i', index, images[index])
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, images[index]);
+    index++
+    gl.uniform1f(u_sampler, 0);
+
+    gl.clearColor(0.0, 0.0, 0.0, 0.0)
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
+    if (index >= 7) {
+      index = 0
+    }
+
+  }
+
+
+
+</script>
+
+</html>

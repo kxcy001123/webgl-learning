@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Document</title>
+  <style>
+    * {
+      padding: 0;
+      margin: 0;
+    }
+  </style>
+</head>
+
+<body>
+  <canvas id="example" width="400" height="400"></canvas>
+  <button onclick="move('left')">移动1</button>
+  <button onclick="move('right')">移动2</button>
+
+  <button onclick="rotate()">旋转</button>
+  <button>2</button>
+
+  <script src="../utils/webgl-utils.js"></script>
+  <script src="../utils/webgl-debug.js"></script>
+  <script src="../utils//cuon-utils.js"></script>
+  <script src="../utils/cuon-matrix.js"></script>
+
+  <script>
+
+    let VSHADER_SOURCE = `
+      attribute vec4 a_Position;
+      attribute float a_PointSize;
+
+      uniform vec4 u_Translation;
+      uniform mat4 u_xformMatrix;
+      uniform mat4 u_xformTransMatrix;
+
+
+      void main(){
+        gl_Position = u_xformMatrix * u_xformTransMatrix * (a_Position + u_Translation) ;
+        gl_PointSize = a_PointSize;
+      }
+    `;
+
+    let FSHADER_SOURCE = `
+      precision mediump float;
+      uniform vec4 u_FragColor;
+      void main(){
+        gl_FragColor = u_FragColor;
+      }
+    `;
+
+
+
+    let pointSizeArr = [10, 5]
+
+
+    let gl = getWebGLContext(document.getElementById("example"));
+
+    let translate = 0.1;
+
+    let rotateAngle = 45;
+
+    if (!initShaders(gl, VSHADER_SOURCE, FSHADER_SOURCE)) {
+    }
+
+    let u_Translation = gl.getUniformLocation(gl.program, 'u_Translation');
+
+    /** 获取 a_Position的存储位置 */
+    let a_Position = gl.getAttribLocation(gl.program, 'a_Position');
+    let a_PointSize = gl.getAttribLocation(gl.program, 'a_PointSize');
+
+    let u_xformMatrix = gl.getUniformLocation(gl.program, 'u_xformMatrix');
+    let u_xformTransMatrix = gl.getUniformLocation(gl.program, 'u_xformTransMatrix');
+
+
+    // 获取u_FragColor 地址
+    let u_FragColor = gl.getUniformLocation(gl.program, 'u_FragColor')
+
+    let pos = [0.0, 0.0, 0.0, 1.0]
+    let posArr = [pos];
+
+
+    function main() {
+
+      gl.clearColor(0.0, 0, 0, 1.0)
+
+      gl.clear(gl.COLOR_BUFFER_BIT);
+
+
+
+      // 设置a_Position的值
+      gl.vertexAttrib4fv(a_Position, pos)
+
+      gl.uniform4fv(u_Translation, new Float32Array([translate, translate, translate, 0.0]));
+
+      let radian = Math.PI * rotateAngle / 180;
+
+      let cosB = Math.cos(radian);
+      let sinB = Math.sin(radian);
+
+      let xFormMatrix = new Float32Array([
+        cosB, sinB, 0.0, 0.0,
+        -sinB, cosB, 0.0, 0.0,
+        0.0, 0.0, 1.0, 0.0,
+        0.0, 0.0, 0.0, 1.0,
+      ])
+
+
+      gl.uniformMatrix4fv(u_xformMatrix, false, xFormMatrix)
+
+      gl.uniformMatrix4fv(u_xformTransMatrix, false, new Matrix4().elements)
+
+      gl.vertexAttrib1f(a_PointSize, 5.0);
+
+      gl.drawArrays(gl.POINTS, 0, 1)
+
+
+      console.log('gl.getParameter(gl.COLOR_CLEAR_VALUE);', gl.getParameter(gl.COLOR_CLEAR_VALUE))
+
+      let { width, height } = document.getElementById("example")
+
+      console.log(' width, height', width, height)
+
+
+
+      document.getElementById("example").addEventListener('click', (e) => {
+
+        let pos = [(e.clientX - width / 2) / (width / 2), -(e.clientY - height / 2) / (height / 2), 0.0, 1.0];
+
+        posArr.push(pos);
+
+        drawShape()
+
+        gl.drawArrays(gl.TRIANGLE_STRIP, 0, posArr.length)
+
+      })
+
+    }
+
+
+    main();
+
+    function drawShape() {
+      gl.clearColor(0.0, 0, 0, 1.0)
+
+      gl.clear(gl.COLOR_BUFFER_BIT);
+      let n = posArr.length;
+
+      let tmp = posArr.flat()
+
+      console.log('tmp', tmp)
+      let vertexBuffer = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(tmp), gl.STATIC_DRAW);
+
+      gl.vertexAttribPointer(a_Position, 4, gl.FLOAT, false, 0, 0)
+      gl.enableVertexAttribArray(a_Position);
+
+      gl.vertexAttrib1f(a_PointSize, n % 2 ? 10.0 : 5.0)
+      gl.uniform4fv(u_FragColor, n % 2 ? new Float32Array([1.0, 0.0, 0.0, 1.0]) : new Float32Array([0.0, 1.0, 0.0, 1.0]))
+
+    }
+
+
+
+    function move(dir) {
+
+      if (dir === 'left') {
+        translate += 0.1;
+        gl.uniform4fv(u_Translation, new Float32Array([translate, translate, translate, 0.0]));
+
+
+      } else {
+        translate -= 0.1;
+
+        let translateMatrix = new Matrix4().setTranslate(translate, translate, translate);
+        gl.uniformMatrix4fv(u_xformTransMatrix, false, translateMatrix.elements)
+      }
+
+
+      drawShape()
+
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, posArr.length)
+
+
+    }
+
+
+
+    function rotate() {
+      rotateAngle += 45;
+
+      let radian = Math.PI * rotateAngle / 180;
+
+      let cosB = Math.cos(radian);
+      let sinB = Math.sin(radian);
+
+      let xFormMatrix = new Float32Array([
+        cosB, -sinB, 0.0, 0.0,
+        sinB, cosB, 0.0, 0.0,
+        0.0, 0.0, 1.0, 0.0,
+        0.0, 0.0, 0.0, 1.0,
+      ])
+      gl.uniformMatrix4fv(u_xformMatrix, false, xFormMatrix)
+      drawShape()
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, posArr.length)
+
+
+
+    }
+
+
+  </script>
+</body>
+
+</html>

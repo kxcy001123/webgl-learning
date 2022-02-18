@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Document</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        background-color: aqua;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="example" width="400" height="400"></canvas>
+  </body>
+  <script src="../utils/webgl-utils.js"></script>
+  <script src="../utils/webgl-debug.js"></script>
+  <script src="../utils//cuon-utils.js"></script>
+  <script src="../utils/cuon-matrix.js"></script>
+
+  <script>
+    // x1 = x * consb - y * sinb;
+    // y1 = y * conb + x * sinb;
+    var VSHADER_SOURCE = `
+        attribute vec4 a_Position;
+        uniform mat4 u_xformMatrix;
+        uniform mat4 u_xformScaleMatrix;
+        void main (){
+            gl_Position =  u_xformMatrix * u_xformScaleMatrix * a_Position;
+        }
+    `;
+
+    var FSHADER_SOURCE = `
+        void main(){
+            gl_FragColor = vec4(1.0, 0.0, 0.0, 1.0);
+        }
+    `;
+
+    var g_points = [];
+    var canvas = document.getElementById("example");
+    var gl = canvas.getContext("webgl");
+
+    if (!initShaders(gl, VSHADER_SOURCE, FSHADER_SOURCE)) {
+      console.log("initShaders error");
+    }
+
+    function initVertexBuffers(gl) {
+      var vertices = new Float32Array([0.0, 0.5, -0.5, -0.5, 0.5, -0.5]);
+
+      var n = 3;
+      var vertexBuffer = gl.createBuffer();
+      console.log("vertexBuffer", vertexBuffer);
+
+      gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+      gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
+      var a_Position = gl.getAttribLocation(gl.program, "a_Position");
+      gl.vertexAttribPointer(a_Position, 2, gl.FLOAT, false, 0, 0);
+
+      gl.enableVertexAttribArray(a_Position);
+
+      return n;
+    }
+
+    var n = initVertexBuffers(gl);
+    console.log("initVertexBuffers return value", n);
+
+    var Tx = 0.5,
+      Ty = 0.5,
+      Tz = 0.5;
+
+    var ANGLE = 75.0;
+
+    function main() {
+      ANGLE -= 0.5;
+
+      Tx -= 0.01;
+
+      if (Tx <= 0) {
+        Tx = 0.5;
+      }
+      if (Tz <= 0) {
+        Tz = 0.5;
+      }
+      var radian = (Math.PI * ANGLE) / 180.0;
+      var consB = Math.cos(radian);
+      var sinB = Math.sin(radian);
+      // webgl 中矩阵是列主序的
+      var xformMatrix = new Float32Array([
+        consB,
+        sinB,
+        0,
+        0,
+        -sinB,
+        -consB,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        Tx,
+        Ty,
+        Tz,
+        1,
+      ]);
+
+      // 缩放矩阵
+      var sx = 1.0,
+        sy = 1.5,
+        sz = 1.0;
+      var xformScaleMatrix = new Float32Array([
+        sx,
+        0,
+        0,
+        0,
+        0,
+        sy,
+        0,
+        0,
+        0,
+        0,
+        sz,
+        0,
+        0,
+        0,
+        0,
+        1.0,
+      ]);
+
+      var u_xformMatrix = gl.getUniformLocation(gl.program, "u_xformMatrix");
+      var u_xformScaleMatrix = gl.getUniformLocation(
+        gl.program,
+        "u_xformScaleMatrix"
+      );
+
+      gl.clearColor(0.0, 0.0, 0.0, 1.0);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+
+      gl.uniformMatrix4fv(u_xformMatrix, false, xformMatrix);
+      gl.uniformMatrix4fv(u_xformScaleMatrix, false, xformScaleMatrix);
+      gl.drawArrays(gl.LINE_LOOP, 0, n);
+      requestAnimationFrame(main);
+    }
+
+    requestAnimationFrame(main);
+  </script>
+</html>
