@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Document</title>
+  <style>
+
+  </style>
+</head>
+
+<body>
+  <canvas id="example" width="600" height="400"></canvas>
+  <button onclick="start()" id="start">开始</button>
+  <button onclick="stop()" id="stop">停止</button>
+
+</body>
+<script src="../utils/webgl-utils.js"></script>
+<script src="../utils/webgl-debug.js"></script>
+<script src="../utils//cuon-utils.js"></script>
+<script src="../utils/cuon-matrix.js"></script>
+
+<script>
+  var VSHADER_SOURCE = `
+        attribute vec4 a_Position;
+        attribute vec4 a_Color;
+        struct light {
+          vec4 color;
+          vec3 position;
+        } l1,l2;
+        varying vec4 v_Color;
+        
+        void main (){
+            gl_Position = a_Position;
+            v_Color = a_Color;
+        }
+    `;
+
+  var FSHADER_SOURCE = `
+        precision mediump float;
+        uniform sampler2D u_sampler;
+        varying vec4 v_Color;
+        uniform float u_Time;
+        uniform vec2 iResolution;
+
+        vec3 HexTo01Color(float redAmount,float greenAmount,float yellowAmount){
+          vec3 color = vec3(redAmount/255.,greenAmount/255.,yellowAmount/255.);
+          return color;
+        }
+
+        void mainImage (out vec4 fragColor, vec4 fragCoord ){
+
+          vec2 uv = (2.*vec2(fragCoord)-iResolution.xy)/min(iResolution.x,iResolution.y);
+
+          float x = iResolution.x/iResolution.y;
+
+          float color = 1.;
+
+          //clamp实现方式
+          float max = 0.8,min = 0.2;
+          if(uv.x<0.33){
+              if(uv.y>max) color = max;
+              else if(uv.y>min&&uv.y<max) color = uv.y;
+              else color = min;
+          }
+
+          //clamp
+          else if(uv.x<0.66) color = clamp(uv.y,min,max);
+
+          //比较复杂的使用方式
+          else{
+              float y = cos(3.*2.0*3.14*uv.y);   //得到cos的3次映射值
+
+              y = (y+1.)/2.;  //将[-1,1]映射至[0,1]
+              color = clamp(y,.2,.8);
+          }
+
+
+          fragColor = vec4(vec3(color),1.);
+
+        }
+        void main(){
+            mainImage(gl_FragColor, gl_FragCoord);
+            //gl_FragColor = v_Color * vec4(u_Time,u_Time,u_Time, 1.0);
+        }
+    `;
+
+  var g_points = [];
+  var g_colors = [];
+  var canvas = document.getElementById('example');
+  var gl = canvas.getContext('webgl');
+
+  if (!initShaders(gl, VSHADER_SOURCE, FSHADER_SOURCE)) {
+    console.log('initShaders error');
+  }
+
+
+  let matrix_pos_color = new Float32Array([
+    -1.0, 1.0, 0.0, 0.0, 1.0,
+    -1.0, -1.0, 0.0, 1.0, 0.0,
+    1.0, -1.0, 0.0, 0.0, 1.0,
+    1.0, 1.0, 1.0, 0.0, 0.0,
+  ])
+
+  let FSIZE = matrix_pos_color.BYTES_PER_ELEMENT;
+  let a_Position = gl.getAttribLocation(gl.program, 'a_Position');
+  let a_Color = gl.getAttribLocation(gl.program, 'a_Color');
+  let u_Time = gl.getUniformLocation(gl.program, 'u_Time');
+  let u_iResolution = gl.getUniformLocation(gl.program, 'iResolution');
+
+  gl.uniform2fv(u_iResolution, [gl.drawingBufferWidth, gl.drawingBufferHeight])
+
+  let pos_color_buffer = gl.createBuffer();
+
+  gl.bindBuffer(gl.ARRAY_BUFFER, pos_color_buffer);
+  gl.bufferData(gl.ARRAY_BUFFER, matrix_pos_color, gl.STATIC_DRAW);
+
+  gl.vertexAttribPointer(a_Position, 2, gl.FLOAT, false, FSIZE * 5, 0);
+  gl.enableVertexAttribArray(a_Position)
+
+
+  gl.vertexAttribPointer(a_Color, 3, gl.FLOAT, false, FSIZE * 5, FSIZE * 2);
+  gl.enableVertexAttribArray(a_Color)
+
+  gl.clearColor(1.0, 0.0, 0.0, 0.0)
+
+  let time = 0;
+
+  let flag = 0;
+
+  start = () => {
+    flag = 1;
+  }
+
+  stop = () => {
+    flag = 0;
+  }
+
+  function draw() {
+    let _time = performance.now();
+
+    if (_time - time > 10 && flag) {
+      let sinTime = time / 1000
+
+      gl.uniform1f(u_Time, sinTime)
+
+      console.log('sinTime', sinTime)
+      gl.clear(gl.COLOR_BUFFER_BIT);
+      gl.drawArrays(gl.TRIANGLE_FAN, 0, 4);
+      time = performance.now();
+
+    }
+
+    requestAnimationFrame(draw)
+  }
+  draw()
+</script>
+
+</html>
