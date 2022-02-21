@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Document</title>
+  <style>
+
+  </style>
+</head>
+
+<body>
+  <canvas id="example" width="600" height="400"></canvas>
+  <button onclick="start()" id="start">开始</button>
+  <button onclick="stop()" id="stop">停止</button>
+
+</body>
+<script src="../utils/webgl-utils.js"></script>
+<script src="../utils/webgl-debug.js"></script>
+<script src="../utils//cuon-utils.js"></script>
+<script src="../utils/cuon-matrix.js"></script>
+
+<script>
+  var VSHADER_SOURCE = `
+        attribute vec4 a_Position;
+        attribute vec4 a_Color;
+        struct light {
+          vec4 color;
+          vec3 position;
+        } l1,l2;
+        varying vec4 v_Color;
+        
+        void main (){
+            gl_Position = a_Position;
+            v_Color = a_Color;
+        }
+    `;
+
+  var FSHADER_SOURCE = `
+        precision mediump float;
+        uniform sampler2D u_sampler;
+        varying vec4 v_Color;
+        uniform float u_Time;
+        uniform vec2 iResolution;
+
+        vec3 HexTo01Color(float redAmount,float greenAmount,float yellowAmount){
+          vec3 color = vec3(redAmount/255.,greenAmount/255.,yellowAmount/255.);
+          return color;
+        }
+
+        void mainImage (out vec4 fragColor, vec4 fragCoord ){
+
+          vec2 uv = (2.*vec2(fragCoord)-iResolution.xy)/min(iResolution.x,iResolution.y);
+
+            vec3 BGcolor = vec3(1.);    
+            vec3 axisColor = HexTo01Color(22.,147.,165.);   //坐标轴颜色
+            vec3 gridColor = vec3(.5);  //网格颜色
+
+            vec3 color_1 = HexTo01Color(22.,147.,165.);
+            vec3 color_2 = HexTo01Color(173.,216.,199.);
+            vec3 color_3 = HexTo01Color(251.,184.,41.);
+
+            vec3 col = 0.5 + 0.5*sin(u_Time+uv.xyy+vec3(0,2,4));
+
+
+            vec3 color = BGcolor;
+            float radius = 0.6; //半径
+            const float gridGap = 0.04;  //网格间距
+            for(float i = 0.;i<1.;i+=gridGap){
+                if(abs(uv.x-i)<0.004) color = gridColor;
+                if(abs(uv.y-i)<0.002) color = gridColor;
+            }
+
+            if(abs(uv.x)<0.02) color = axisColor;
+            if(abs(uv.y)<0.03) color = axisColor;
+            if(uv.x*uv.x+uv.y*uv.y<radius) color = color_1 + col;
+            if(length(uv)<0.4){
+              color = color_2 + col;
+            }
+            vec2 circlePosition = vec2(0.2,.2);
+            if(length(uv-circlePosition)<0.3) color = color_3 + col;
+
+            float alpha = 1.;
+            fragColor = vec4(color,alpha); 
+
+
+        }
+        void main(){
+            mainImage(gl_FragColor, gl_FragCoord);
+            //gl_FragColor = v_Color * vec4(u_Time,u_Time,u_Time, 1.0);
+        }
+    `;
+
+  var g_points = [];
+  var g_colors = [];
+  var canvas = document.getElementById('example');
+  var gl = canvas.getContext('webgl');
+
+  if (!initShaders(gl, VSHADER_SOURCE, FSHADER_SOURCE)) {
+    console.log('initShaders error');
+  }
+
+
+  let matrix_pos_color = new Float32Array([
+    -1.0, 1.0, 0.0, 0.0, 1.0,
+    -1.0, -1.0, 0.0, 1.0, 0.0,
+    1.0, -1.0, 0.0, 0.0, 1.0,
+    1.0, 1.0, 1.0, 0.0, 0.0,
+  ])
+
+  let FSIZE = matrix_pos_color.BYTES_PER_ELEMENT;
+  let a_Position = gl.getAttribLocation(gl.program, 'a_Position');
+  let a_Color = gl.getAttribLocation(gl.program, 'a_Color');
+  let u_Time = gl.getUniformLocation(gl.program, 'u_Time');
+  let u_iResolution = gl.getUniformLocation(gl.program, 'iResolution');
+
+  gl.uniform2fv(u_iResolution, [gl.drawingBufferWidth, gl.drawingBufferHeight])
+
+  let pos_color_buffer = gl.createBuffer();
+
+  gl.bindBuffer(gl.ARRAY_BUFFER, pos_color_buffer);
+  gl.bufferData(gl.ARRAY_BUFFER, matrix_pos_color, gl.STATIC_DRAW);
+
+  gl.vertexAttribPointer(a_Position, 2, gl.FLOAT, false, FSIZE * 5, 0);
+  gl.enableVertexAttribArray(a_Position)
+
+
+  gl.vertexAttribPointer(a_Color, 3, gl.FLOAT, false, FSIZE * 5, FSIZE * 2);
+  gl.enableVertexAttribArray(a_Color)
+
+  gl.clearColor(1.0, 0.0, 0.0, 0.0)
+
+  let time = 0;
+
+  let flag = 0;
+
+  start = () => {
+    flag = 1;
+  }
+
+  stop = () => {
+    flag = 0;
+  }
+
+  function draw() {
+    let _time = performance.now();
+
+    if (_time - time > 10 && flag) {
+      let sinTime = time / 1000
+
+      gl.uniform1f(u_Time, sinTime)
+
+      console.log('sinTime', sinTime)
+      gl.clear(gl.COLOR_BUFFER_BIT);
+      gl.drawArrays(gl.TRIANGLE_FAN, 0, 4);
+      time = performance.now();
+
+    }
+
+    requestAnimationFrame(draw)
+  }
+  draw()
+</script>
+
+</html>
