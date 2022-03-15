@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Document</title>
+</head>
+
+<body>
+  <canvas id="example" width="800" height="600"></canvas>
+  <button onclick="start()" id="start">开始</button>
+  <button onclick="stop()" id="stop">停止</button>
+  <canvas id="example1" width="800" height="600"></canvas>
+  <canvas id="example2" width="800" height="600"></canvas>
+
+</body>
+<script src="../utils/webgl-utils.js"></script>
+<script src="../utils/webgl-debug.js"></script>
+<script src="../utils//cuon-utils.js"></script>
+<script src="../utils/cuon-matrix.js"></script>
+
+<script>
+
+  let time = 0;
+
+  let flag = 1;
+
+  let start = () => {
+    flag = 1;
+  }
+
+  let stop = () => {
+    flag = 0;
+  }
+
+  let VSHADER_SOURCE = `
+    attribute vec4 a_Position;
+    attribute vec2 a_TexCoord;
+    varying vec2 v_TexCoord;
+
+    void main(){
+      gl_Position = a_Position;
+      v_TexCoord = a_TexCoord;
+    }
+  `;
+
+  let FSHADER_SOURCE = `
+    precision mediump float;
+    uniform sampler2D u_Sampler0;
+    uniform sampler2D u_Sampler1;
+    varying vec2 v_TexCoord;
+    uniform vec2 iResolution;
+    uniform float u_Time;
+
+    // 冰冻
+    void frozen(inout vec4 color){
+      color.r = abs(color.r-color.g-color.b)*3.0/2.0;
+      color.g = abs(color.g-color.b-color.r)*3.0/2.0;
+      color.b = abs(color.b-color.r-color.g)*3.0/2.0;
+      color.a = 1.0;
+    }
+
+    // 熔铸
+    void casting(inout vec4 col){
+      col.r = col.r*0.5/(col.g+col.b);
+      col.g = col.g*0.5/(col.r+col.b);
+      col.b = col.b*0.5/(col.r+col.g);
+      col.a = 1.0;
+    }
+
+    // 碧绿
+    void ghost(inout vec4 col){
+      col.r = pow((col.g - col.b),2.0) / 0.5;
+      col.g = pow((col.r - col.b),2.0) / 0.5;
+      col.b = pow((col.r - col.g),2.0) / 0.5;
+      col.a = 1.0;
+
+    }
+    //棕褐色效果就是要实现那种图像模糊、略带发黄的老照片的感觉，别具风情。
+    void distress(inout vec4 col){
+      col.r = 0.393*col.r+0.769*col.g+0.189*col.b;
+      col.g = 0.349*col.r+0.686*col.g+0.168*col.b;
+      col.b = 0.272*col.r+0.534*col.g+0.131*col.b;
+      col.a = 1.0;
+
+    }
+
+    void main(){
+      float PI = 3.1415926;
+      float PIx2 = 2.*PI;
+      float PI_HALF = PI/2.;
+      vec2 uv = gl_FragCoord.xy / iResolution.xy;
+
+      float sinDegree = sin(PI_HALF * u_Time);
+      float sinDegreeOffset = sinDegree * .1; 
+
+      vec4 color0 = texture2D(u_Sampler0, uv);
+      vec4 color1 = texture2D(u_Sampler1, uv);
+      gl_FragColor = color0;
+
+      for(float offset = 0.0; offset < 2.2; offset += 0.2){
+        //float tmp = -uv.x + offset;
+        float tmp = offset;
+
+
+        if(uv.x > (tmp - sinDegreeOffset) && uv.x < (tmp + sinDegreeOffset)){
+          gl_FragColor = color1;
+        }
+      }
+
+      distress(gl_FragColor);
+      // 
+
+    }
+  `;
+
+  let canvas = document.getElementById('example');
+
+  let gl = canvas.getContext('webgl');
+
+
+  if (!initShaders(gl, VSHADER_SOURCE, FSHADER_SOURCE)) {
+    console.log('init shader error')
+  }
+
+  let verticesTexCoords = new Float32Array([
+    -1.0, 1.0, 0.0, 1.0,
+    -1.0, -1.0, 0.0, 0.0,
+    1.0, -1.0, 1.0, 0.0,
+    1.0, 1.0, 1.0, 1.0,
+  ]);
+
+  let FSIZE = verticesTexCoords.BYTES_PER_ELEMENT;
+
+  let verticesTexCoordsBuffer = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, verticesTexCoordsBuffer);
+  gl.bufferData(gl.ARRAY_BUFFER, verticesTexCoords, gl.STATIC_DRAW);
+
+
+  let a_Position = gl.getAttribLocation(gl.program, 'a_Position');
+  let a_TexCoord = gl.getAttribLocation(gl.program, 'a_TexCoord');
+
+  gl.vertexAttribPointer(a_Position, 2, gl.FLOAT, false, FSIZE * 4, 0);
+  gl.enableVertexAttribArray(a_Position);
+
+  gl.vertexAttribPointer(a_TexCoord, 2, gl.FLOAT, false, FSIZE * 4, FSIZE * 2);
+  gl.enableVertexAttribArray(a_TexCoord);
+
+  let u_iResolution = gl.getUniformLocation(gl.program, 'iResolution');
+  gl.uniform2fv(u_iResolution, [gl.drawingBufferWidth, gl.drawingBufferHeight])
+
+
+  let u_Time = gl.getUniformLocation(gl.program, 'u_Time');
+
+
+  let loadImage = function (path) {
+    return new Promise((res) => {
+      let img = new Image();
+      img.src = path;
+      img.onload = function () {
+        res(img)
+      }
+    })
+  }
+
+  let p1 = loadImage('../images/1.jpeg');
+  let p2 = loadImage('../images/2.jpg');
+
+
+
+
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 1);
+
+
+
+  Promise.all([p1, p2]).then(imgs => {
+    imgs.forEach((item, index) => {
+      let texture = gl.createTexture();
+      gl.activeTexture(gl[`TEXTURE${index}`]);
+
+      gl.bindTexture(gl.TEXTURE_2D, texture);
+
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, item);
+
+      let u_Sampler = gl.getUniformLocation(gl.program, `u_Sampler${index}`);
+
+
+      gl.uniform1i(u_Sampler, index);
+    })
+
+    function draw() {
+      let _time = performance.now();
+
+      if (_time - time > 10 && flag) {
+        let secTime = time / 1000
+
+        gl.uniform1f(u_Time, secTime)
+
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.drawArrays(gl.TRIANGLE_FAN, 0, 4);
+        time = performance.now();
+
+      }
+
+      requestAnimationFrame(draw)
+    }
+
+    draw();
+  })
+
+</script>
+
+
+<script type="module">
+  let VSHADER_SOURCE = `
+    attribute vec4 a_Position;
+    attribute vec2 a_TexCoord;
+    varying vec2 v_TexCoord;
+
+    void main(){
+      gl_Position = a_Position;
+      v_TexCoord = a_TexCoord;
+    }
+  `;
+
+  let FSHADER_SOURCE = `
+    precision mediump float;
+    uniform sampler2D u_Sampler0;
+    uniform sampler2D u_Sampler1;
+    varying vec2 v_TexCoord;
+    uniform vec2 iResolution;
+    void main(){
+      vec2 uv = gl_FragCoord.xy / iResolution.xy;
+      vec4 color0 = texture2D(u_Sampler0, uv);
+      vec4 color1 = texture2D(u_Sampler1, uv);
+
+      float tmp = -uv.x + 0.6;
+      gl_FragColor = color0;
+
+      if(uv.y > (tmp-0.2) && uv.y<(tmp+0.2)){
+        gl_FragColor = color1;
+      }
+      
+    }
+  `;
+
+  let canvas = document.getElementById('example2');
+
+  let gl = canvas.getContext('webgl');
+
+
+  if (!initShaders(gl, VSHADER_SOURCE, FSHADER_SOURCE)) {
+    console.log('init shader error')
+  }
+
+  let verticesTexCoords = new Float32Array([
+    -1.0, 1.0, 0.0, 1.0,
+    -1.0, -1.0, 0.0, 0.0,
+    1.0, -1.0, 1.0, 0.0,
+    1.0, 1.0, 1.0, 1.0,
+  ]);
+
+  let FSIZE = verticesTexCoords.BYTES_PER_ELEMENT;
+
+  let verticesTexCoordsBuffer = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, verticesTexCoordsBuffer);
+  gl.bufferData(gl.ARRAY_BUFFER, verticesTexCoords, gl.STATIC_DRAW);
+
+
+  let a_Position = gl.getAttribLocation(gl.program, 'a_Position');
+  let a_TexCoord = gl.getAttribLocation(gl.program, 'a_TexCoord');
+
+  gl.vertexAttribPointer(a_Position, 2, gl.FLOAT, false, FSIZE * 4, 0);
+  gl.enableVertexAttribArray(a_Position);
+
+  gl.vertexAttribPointer(a_TexCoord, 2, gl.FLOAT, false, FSIZE * 4, FSIZE * 2);
+  gl.enableVertexAttribArray(a_TexCoord);
+
+  let u_iResolution = gl.getUniformLocation(gl.program, 'iResolution');
+  gl.uniform2fv(u_iResolution, [gl.drawingBufferWidth, gl.drawingBufferHeight])
+
+  let loadImage = function (path) {
+    return new Promise((res) => {
+      let img = new Image();
+      img.src = path;
+      img.onload = function () {
+        res(img)
+      }
+    })
+  }
+
+  let p1 = loadImage('../images/1.jpeg');
+  let p2 = loadImage('../images/2.jpg');
+
+
+
+
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 1);
+
+
+
+  Promise.all([p1, p2]).then(imgs => {
+    imgs.forEach((item, index) => {
+      let texture = gl.createTexture();
+      gl.activeTexture(gl[`TEXTURE${index}`]);
+
+      gl.bindTexture(gl.TEXTURE_2D, texture);
+
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, item);
+
+      let u_Sampler = gl.getUniformLocation(gl.program, `u_Sampler${index}`);
+
+
+      gl.uniform1i(u_Sampler, index);
+    })
+
+    gl.drawArrays(gl.TRIANGLE_FAN, 0, 4)
+  })
+
+</script>
+<script type="module">
+  let VSHADER_SOURCE = `
+    attribute vec4 a_Position;
+    attribute vec2 a_TexCoord;
+    varying vec2 v_TexCoord;
+
+    void main(){
+      gl_Position = a_Position;
+      v_TexCoord = a_TexCoord;
+    }
+  `;
+
+  let FSHADER_SOURCE = `
+    precision mediump float;
+    uniform sampler2D u_Sampler0;
+    uniform sampler2D u_Sampler1;
+    varying vec2 v_TexCoord;
+    uniform vec2 iResolution;
+    void main(){
+      vec4 color0 = texture2D(u_Sampler0, v_TexCoord);
+      vec4 color1 = texture2D(u_Sampler1, v_TexCoord);
+      gl_FragColor = color1;
+    }
+  `;
+
+  let canvas = document.getElementById('example1');
+
+  let gl = canvas.getContext('webgl');
+
+
+  if (!initShaders(gl, VSHADER_SOURCE, FSHADER_SOURCE)) {
+    console.log('init shader error')
+  }
+
+  let verticesTexCoords = new Float32Array([
+    -1.0, 1.0, 0.0, 1.0,
+    -1.0, -1.0, 0.0, 0.0,
+    1.0, -1.0, 1.0, 0.0,
+    1.0, 1.0, 1.0, 1.0,
+  ]);
+
+  let FSIZE = verticesTexCoords.BYTES_PER_ELEMENT;
+
+  let verticesTexCoordsBuffer = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, verticesTexCoordsBuffer);
+  gl.bufferData(gl.ARRAY_BUFFER, verticesTexCoords, gl.STATIC_DRAW);
+
+
+  let a_Position = gl.getAttribLocation(gl.program, 'a_Position');
+  let a_TexCoord = gl.getAttribLocation(gl.program, 'a_TexCoord');
+
+  gl.vertexAttribPointer(a_Position, 2, gl.FLOAT, false, FSIZE * 4, 0);
+  gl.enableVertexAttribArray(a_Position);
+
+  gl.vertexAttribPointer(a_TexCoord, 2, gl.FLOAT, false, FSIZE * 4, FSIZE * 2);
+  gl.enableVertexAttribArray(a_TexCoord);
+
+  let u_iResolution = gl.getUniformLocation(gl.program, 'iResolution');
+  gl.uniform2fv(u_iResolution, [gl.drawingBufferWidth, gl.drawingBufferHeight])
+
+  let loadImage = function (path) {
+    return new Promise((res) => {
+      let img = new Image();
+      img.src = path;
+      img.onload = function () {
+        res(img)
+      }
+    })
+  }
+
+  let p1 = loadImage('../images/1.jpeg');
+  let p2 = loadImage('../images/2.jpg');
+
+
+
+
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 1);
+
+
+
+  Promise.all([p1, p2]).then(imgs => {
+    imgs.forEach((item, index) => {
+      let texture = gl.createTexture();
+      gl.activeTexture(gl[`TEXTURE${index}`]);
+
+      gl.bindTexture(gl.TEXTURE_2D, texture);
+
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, item);
+
+      let u_Sampler = gl.getUniformLocation(gl.program, `u_Sampler${index}`);
+
+
+      gl.uniform1i(u_Sampler, index);
+    })
+
+    gl.drawArrays(gl.TRIANGLE_FAN, 0, 4)
+  })
+
+</script>
+
+</html>
